@@ -1,0 +1,40 @@
+#! /usr/bin/escript
+
+main(Args) ->
+    {ok, MP} = re:compile("(?P<kind>(TODO|FIXME|NOTE|XXX)):\s*(?P<text>.*)$"),
+    ToDos = lists:foldl(fun (X, Acc) -> parse_one(MP, X, Acc) end, dict:new(), Args),
+    % io:format("result:~n  ~p~n", [ToDos]),
+    lists:foldl(fun (Kind, Space) ->
+                    print_kind(Kind, dict:find(Kind, ToDos), Space)
+                end, false, [<<"XXX">>, <<"FIXME">>, <<"TODO">>, <<"NOTE">>]).
+
+parse_one(MP, Name, Storage) ->
+    {ok, File} = file:read_file(Name),
+    {ok, Tokens, _} = erl_scan:string(binary_to_list(File), 0, [return]),
+    Comments = lists:filter(fun (X) -> element(1, X) == comment end, Tokens),
+    Kinds = lists:foldl(fun ({_, LineNo, Line}, Acc) ->
+                            case re:run(Line, MP, [{capture, [kind, text], binary}]) of
+                                nomatch ->
+                                    Acc;
+
+                                {match, [Kind, Text]} ->
+                                    dict:append(Kind, {Name, LineNo+1, Text}, Acc)
+                            end
+                        end, Storage, Comments),
+    Kinds.
+
+print_kind(Kind, {ok, Items}, Space) ->
+    if
+        Space ->
+            io:format("~n");
+
+        true ->
+            ok
+    end,
+    io:format("~s:~n~n", [Kind]),
+    lists:map(fun ({FName, LineNo, Text}) -> io:format("~s:~b: ~s~n", [FName, LineNo, Text]) end, Items),
+    true;
+print_kind(_Kind, error, Space) ->
+    Space.
+
+% vim:ft=erlang
